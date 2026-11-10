@@ -1,0 +1,31 @@
+name: Windows release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-build.txt
+      - run: python -m pytest -q
+      - run: python -m PyInstaller --noconfirm --clean --windowed --name QianchuanAgent --collect-all playwright app.py
+      - shell: pwsh
+        run: |
+          Copy-Item install.ps1,安装.cmd,README.md dist/
+          Compress-Archive -Path dist/* -DestinationPath QianchuanAgent-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QianchuanAgent-Windows-x64
+          path: QianchuanAgent-Windows-x64.zip
+      - if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME QianchuanAgent-Windows-x64.zip --title $env:GITHUB_REF_NAME --notes "Windows client. See README for migration and validation limits."
