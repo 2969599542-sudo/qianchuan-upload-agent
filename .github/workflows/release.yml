@@ -1,6 +1,11 @@
 name: Windows release
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        default: v0.1.0
   push:
     tags: ['v*']
 permissions:
@@ -24,8 +29,16 @@ jobs:
         with:
           name: QianchuanAgent-Windows-x64
           path: QianchuanAgent-Windows-x64.zip
-      - if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish preview installer
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME QianchuanAgent-Windows-x64.zip --title $env:GITHUB_REF_NAME --notes "Windows client. See README for migration and validation limits."
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG QianchuanAgent-Windows-x64.zip --clobber
+          } else {
+            gh release create $env:RELEASE_TAG QianchuanAgent-Windows-x64.zip --target main --prerelease --title $env:RELEASE_TAG --notes "Windows preview. See README for migration and validation limits."
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
