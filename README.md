@@ -2,6 +2,16 @@
 
 Windows 10/11 桌面上传客户端，不需要 GPT 或 Python。使用已安装的 Microsoft Edge，每台电脑由使用者自行登录千川。源代码和安装包仅在本私有仓库分享。
 
+## v0.2.0 GPT辅助诊断
+
+内置OpenAI Responses API调用，不需要安装ChatGPT。首次启动弹出“GPT设置”：填写自己的API密钥，选择账户可用的模型（默认 `gpt-4.1-mini`），点击“保存并测试连接”。密钥由Windows DPAPI按当前用户加密，只保存在本机 `%LOCALAPPDATA%\QianchuanAgent\gpt-settings.json`，不要把该文件复制到共享盘或仓库。可在设置中移除密钥。
+
+点击“请GPT诊断”可取得建议；可选开启自动诊断，默认关闭，异常时每台电脑最多每5分钟请求一次。API按账户单独计费。界面关闭或API失败不改变上传安全规则。设置窗口可关闭，未设置密钥仍可使用原来的上传功能。
+
+仅发送固定状态分类，不发送原始日志、文件名、路径、账户ID、视频或登录凭据。请求设置 `store: false`。GPT仅显示建议，没有执行命令、浏览器操作、删除或放宽额度的权限。相关说明见 [OpenAI官方文本生成文档](https://developers.openai.com/api/docs/guides/text)。
+
+本版测试覆盖密钥加解密、请求内容、错误信息脱敏及自动调用间隔；未提供真实API密钥，因此尚未做真实计费API连通测试。其他电脑仍需首次输入API密钥、配置账户并手动登录千川。
+
 ## 安装
 
 1. 从本仓库 **Releases** 下载 `QianchuanAgent-Windows-x64.zip`，完整解压。

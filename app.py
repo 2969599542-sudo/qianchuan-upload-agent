@@ -10,6 +10,7 @@ from datetime import datetime
 from agent.state import atomic_json
 from agent.worker import run
 from agent.migration import import_legacy
+from agent.gpt import Advisor, settings, save_settings
 
 BASE = Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'QianchuanAgent'
 
@@ -19,11 +20,11 @@ def main():
     configs = BASE/'configs'
     configs.mkdir(exist_ok=True)
     app = tk.Tk()
-    app.title('千川共享盘上传助手 0.1.0')
+    app.title('千川共享盘上传助手 0.2.0 · GPT辅助')
     app.geometry('860x650')
     frame = ttk.Frame(app,padding=16)
     frame.pack(fill='both',expand=True)
-    ttk.Label(frame,text='确认入库后立即删除原片 · 同账户多电脑互斥 · 无需GPT',font=('Microsoft YaHei UI',12)).pack(anchor='w')
+    ttk.Label(frame,text='确认入库后立即删除原片 · 同账户多电脑互斥 · GPT诊断',font=('Microsoft YaHei UI',12)).pack(anchor='w')
     ttk.Label(frame,text='首次使用请配置账户。旧程序必须先停用，并导入历史记录。',wraplength=800).pack(anchor='w',pady=(5,12))
     fields = {}
     for key,label in [('share_root','共享盘总目录'),('folder','对应账户文件夹名称'),('account_id','千川账户ID'),('account_name','千川账户完整名称')]:
@@ -47,6 +48,7 @@ def main():
     profile.pack(side='left')
     workers = {}
     events = queue.Queue()
+    advisor = Advisor(BASE, lambda text: events.put(('gpt', text)))
     status = tk.StringVar(value='尚未启动；可先保存配置并导入旧记录')
     ttk.Label(frame,textvariable=status,wraplength=800).pack(anchor='w',pady=5)
     output = tk.Text(frame,wrap='word',height=18,state='disabled')
@@ -57,6 +59,53 @@ def main():
         with (BASE/'agent.log').open('a',encoding='utf-8') as out:
             out.write(line+'\n')
         events.put(('log',line))
+        advisor.observe(text)
+
+    def gpt_settings():
+        dialog = tk.Toplevel(app)
+        dialog.title('GPT设置 · 密钥只在本机加密保存')
+        dialog.geometry('620x340')
+        box = ttk.Frame(dialog,padding=16)
+        box.pack(fill='both',expand=True)
+        try:
+            conf = settings(BASE)
+        except (ValueError,OSError):
+            conf = {}
+        ttk.Label(box,text='OpenAI API密钥（已保存时可留空；不显示旧密钥）').pack(anchor='w')
+        key = ttk.Entry(box,show='*',width=65)
+        key.pack(fill='x',pady=5)
+        ttk.Label(box,text='模型名称（需你的API账户有权限）').pack(anchor='w')
+        model = ttk.Entry(box)
+        model.insert(0,conf.get('model','gpt-4.1-mini'))
+        model.pack(fill='x',pady=5)
+        auto = tk.BooleanVar(value=conf.get('automatic',False))
+        ttk.Checkbutton(box,text='异常时自动诊断（每台电脑最多每5分钟一次，会产生API费用）',variable=auto).pack(anchor='w',pady=5)
+        ttk.Label(box,text='只发送预设的状态分类，不发送视频、文件名、账户ID或原始日志。\nGPT只提供建议，不执行命令、上传或删除。API费用单独计费。',wraplength=570).pack(anchor='w',pady=5)
+        def persist(test=False):
+            try:
+                save_settings(BASE,key.get(),model.get(),auto.get())
+                key.delete(0,'end')
+                dialog.destroy()
+                status.set('GPT设置已保存，密钥由当前Windows用户加密保护')
+                if test:
+                    advisor.ask()
+            except Exception:
+                messagebox.showerror('设置未保存','请检查密钥和模型名称；首次使用密钥不能为空。',parent=dialog)
+        buttons = ttk.Frame(box)
+        buttons.pack(fill='x',pady=8)
+        ttk.Button(buttons,text='保存',command=persist).pack(side='left')
+        ttk.Button(buttons,text='保存并测试连接',command=lambda:persist(True)).pack(side='left',padx=8)
+        def forget():
+            (BASE/'gpt-settings.json').unlink(missing_ok=True)
+            dialog.destroy()
+            status.set('已移除本机GPT密钥；正在进行的诊断可能仍会返回')
+        ttk.Button(buttons,text='移除密钥',command=forget).pack(side='left')
+
+    def diagnose():
+        if advisor.ask():
+            status.set('GPT正在分析状态分类，请稍候；上传流程继续独立运行')
+        else:
+            status.set('已有GPT诊断正在进行，请稍候')
 
     def config():
         c = {k:v.get().strip() for k,v in fields.items()}
@@ -129,11 +178,15 @@ def main():
     ttk.Button(row,text='开始 / 继续',command=start).pack(side='left',padx=5)
     ttk.Button(row,text='停止全部',command=pause).pack(side='left',padx=5)
     ttk.Button(row,text='导入旧记录',command=migrate).pack(side='left',padx=5)
+    gpt_row = ttk.Frame(frame)
+    gpt_row.pack(fill='x',pady=4)
+    ttk.Button(gpt_row,text='GPT设置',command=gpt_settings).pack(side='left')
+    ttk.Button(gpt_row,text='请GPT诊断',command=diagnose).pack(side='left',padx=8)
 
     def tick():
         while not events.empty():
             kind,value = events.get()
-            if kind=='log':
+            if kind in ('log','gpt'):
                 status.set(value)
                 output.configure(state='normal')
                 output.insert('end',value+'\n')
@@ -146,6 +199,8 @@ def main():
         app.after(500,tick)
     app.protocol('WM_DELETE_WINDOW',app.iconify)
     tick()
+    if not (BASE/'gpt-settings.json').exists():
+        app.after(500,gpt_settings)
     app.mainloop()
 
 

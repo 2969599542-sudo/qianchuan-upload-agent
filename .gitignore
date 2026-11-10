@@ -13,3 +13,6 @@ staging/
 *.mov
 *.m4v
 *.zip
+gpt-settings.json
+*.key
+.env*
